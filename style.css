@@ -1,0 +1,154 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f0f2f5;
+    color: #333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.app-container {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    width: 90%;
+    max-width: 600px;
+}
+
+.input-area {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 1.5rem;
+}
+
+#youtubeUrl {
+    flex-grow: 1;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 1rem;
+}
+
+#loadVideoButton, #qualityTestButton {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    background-color: #007bff;
+    color: white;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#loadVideoButton:hover, #qualityTestButton:hover {
+    background-color: #0056b3;
+}
+
+#qualityTestButton {
+    background-color: #dc3545;
+    margin-top: 1rem;
+}
+#qualityTestButton:hover {
+    background-color: #c82333;
+}
+.hidden {
+    display: none;
+}
+
+#playerContainer {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background-color: #eee;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+}
+
+.youtube-player-facade {
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.play-button {
+    font-size: 60px;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.6);
+    border-radius: 50%;
+    width: 100px;
+    height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s, background-color 0.2s;
+}
+.youtube-player-facade:hover .play-button {
+    transform: scale(1.1);
+    background-color: rgba(255, 0, 0, 0.8);
+}
+/* ... (all the previous CSS is here) ... */
+
+#qualityTestButton {
+    background-color: #dc3545;
+    margin-top: 1rem;
+}
+#qualityTestButton:hover {
+    background-color: #c82333;
+}
+/* NEW: Style for our status message */
+#qualityStatus {
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    color: #555;
+    font-weight: bold;
+    min-height: 1.2em; /* Prevents layout jump when text appears */
+}
+
+/* ... (the rest of the CSS is here) ... */
+
+/* Simulation overlay */
+.simulate-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+.simulate-overlay-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+.spinner {
+    width: 42px;
+    height: 42px;
+    border: 4px solid rgba(255,255,255,0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+}
+
+.simulate-text {
+    font-size: 0.95rem;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

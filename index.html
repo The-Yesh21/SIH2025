@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Video Loader</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <h1>Performance-Optimized YouTube Player</h1>
+        <p>Paste a YouTube video link below and click "Load Video".</p>
+        <div class="input-area">
+            <input type="url" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=...">
+            <button id="loadVideoButton">Load Video</button>
+        </div>
+        
+        <div id="playerContainer"></div>
+
+        <button id="qualityTestButton" class="hidden">Simulate Low Internet</button>
+        
+        <p id="qualityStatus"></p>
+
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
