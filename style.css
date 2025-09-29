@@ -60,6 +60,16 @@ body {
     display: none;
 }
 
+.disclaimer {
+    background-color: #f8f9fa;
+    border-left: 4px solid #007bff;
+    padding: 10px 15px;
+    margin: 15px 0;
+    border-radius: 4px;
+    text-align: left;
+    font-size: 0.9rem;
+}
+
 #playerContainer {
     width: 100%;
     aspect-ratio: 16 / 9;
