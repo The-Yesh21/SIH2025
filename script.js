@@ -184,6 +184,32 @@ function enforceLowQuality() {
     }, 600);
 }
 
+/**
+ * Toggle low-internet mode. When ON, repeatedly tries to lock to the lowest
+ * available quality. When OFF, returns playback to automatic quality.
+ */
+function toggleLowInternetMode() {
+    if (!player) {
+        qualityStatus.textContent = 'Load and start a video first.';
+        return;
+    }
+    if (!lowBandwidthMode) {
+        lowBandwidthMode = true;
+        const target = getLowestAvailableQuality() || 'small';
+        qualityButton.textContent = 'Disable Low Internet';
+        qualityStatus.textContent = `Low-internet mode ON. Targeting ${qualityMap[target] || target}.`;
+        enforceLowQuality();
+    } else {
+        lowBandwidthMode = false;
+        clearQualityRetry();
+        try { player.setPlaybackQuality('default'); } catch {}
+        qualityButton.textContent = 'Simulate Low Internet';
+        const q = safeGetPlaybackQuality();
+        const readable = qualityMap[q] || q || 'Auto';
+        qualityStatus.textContent = `Low-internet mode OFF. Quality: ${readable}`;
+    }
+}
+
 function clearQualityRetry() {
     if (qualityRetryTimer) {
         clearInterval(qualityRetryTimer);
@@ -246,8 +272,8 @@ loadButton.addEventListener('click', () => {
 });
 
 qualityButton.addEventListener('click', () => {
-    // Run a purely visual simulation: show overlay animation and staged messages
-    simulateLowInternetExperience();
+    // Toggle actual low-bandwidth behavior
+    toggleLowInternetMode();
 });
 
 /**
