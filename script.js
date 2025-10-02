@@ -10,6 +10,9 @@ let currentVideoId; // To store the ID of the current video
 let lowBandwidthMode = false; // Toggle state for simulating low internet
 let qualityRetryTimer = null; // Interval timer for enforcing low quality
 let qualityRetryCount = 0; // Counter for retries
+let qualityMonitorTimer = null; // Polling timer to reflect applied quality in UI
+let lastPlaybackTime = 0; // Last known playback time to support resume
+let pauseDestroyTimer = null; // Debounce timer to avoid destroying on brief pauses
 
 // A map to translate quality strings to human-readable text
 const qualityMap = {
@@ -42,15 +45,15 @@ function getYouTubeID(url) {
  * Creates the video facade (thumbnail + play button).
  * @param {string} videoId - The YouTube video ID.
  */
-function createFacade(videoId) {
+function createFacade(videoId, startSeconds = 0) {
     playerContainer.innerHTML = `
         <div class="youtube-player-facade" style="background-image: url('https://img.youtube.com/vi/${videoId}/hqdefault.jpg');">
             <div class="play-button">▶</div>
         </div>
     `;
-    
-    playerContainer.querySelector('.youtube-player-facade').addEventListener('click', () => {
-        loadYouTubeAPI(videoId);
+    const facade = playerContainer.querySelector('.youtube-player-facade');
+    facade.addEventListener('click', () => {
+        loadYouTubeAPI(videoId, startSeconds);
     });
 }
 
@@ -58,9 +61,9 @@ function createFacade(videoId) {
  * Loads the YouTube IFrame API script dynamically.
  * @param {string} videoId - The video ID to play after loading.
  */
-function loadYouTubeAPI(videoId) {
+function loadYouTubeAPI(videoId, startSeconds = 0) {
     if (window.YT && window.YT.Player) {
-        createPlayer(videoId);
+        createPlayer(videoId, startSeconds);
     } else {
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
@@ -68,7 +71,7 @@ function loadYouTubeAPI(videoId) {
         firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
         window.onYouTubeIframeAPIReady = () => {
-            createPlayer(videoId);
+            createPlayer(videoId, startSeconds);
         };
     }
 }
@@ -77,7 +80,7 @@ function loadYouTubeAPI(videoId) {
  * Creates the YouTube player instance.
  * @param {string} videoId - The video ID to play.
  */
-function createPlayer(videoId) {
+function createPlayer(videoId, startSeconds = 0) {
     playerContainer.innerHTML = '<div id="player"></div>'; // Create a target for the player
     player = new YT.Player('player', {
         height: '100%',
@@ -86,6 +89,9 @@ function createPlayer(videoId) {
         playerVars: {
             'autoplay': 1,
             'rel': 0, // Hide related videos
+            'playsinline': 1,
+            'modestbranding': 1,
+            'start': Math.max(0, Math.floor(startSeconds || 0))
         },
         events: {
             'onReady': onPlayerReady,
@@ -100,7 +106,16 @@ function createPlayer(videoId) {
  */
 function onPlayerReady() {
     if (lowBandwidthMode) {
-        enforceLowQuality();
+        // Try to start at a lower quality to reduce initial buffering
+        const target = getLowestAvailableQuality() || 'small';
+        try { player.pauseVideo(); } catch {}
+        try { player.setPlaybackQuality(target); } catch {}
+        // Small defer to let the player apply the quality hint
+        setTimeout(() => {
+            try { player.playVideo(); } catch {}
+            enforceLowQuality();
+            startQualityMonitor();
+        }, 150);
     }
 }
 
@@ -116,6 +131,29 @@ function onPlayerStateChange(event) {
         if (lowBandwidthMode) {
             enforceLowQuality();
         }
+        removePauseOverlay();
+        if (pauseDestroyTimer) { clearTimeout(pauseDestroyTimer); pauseDestroyTimer = null; }
+    } else if (
+        event.data === YT.PlayerState.PAUSED ||
+        event.data === YT.PlayerState.ENDED ||
+        event.data === YT.PlayerState.CUED
+    ) {
+        // Debounce: wait a moment to ensure it's a user pause, not a brief buffer
+        if (pauseDestroyTimer) clearTimeout(pauseDestroyTimer);
+        pauseDestroyTimer = setTimeout(() => {
+            try { lastPlaybackTime = safeGetCurrentTime() || lastPlaybackTime || 0; } catch {}
+            // If ended, resume from 0
+            if (event.data === YT.PlayerState.ENDED) lastPlaybackTime = 0;
+            // Destroy player to avoid recommendations network usage and revert to facade
+            try { player && player.destroy && player.destroy(); } catch {}
+            player = null;
+            createFacade(currentVideoId, lastPlaybackTime);
+            // Also keep the simulate button visible
+            qualityButton.classList.remove('hidden');
+            // Clear monitors/timers related to quality enforcement while no player
+            clearQualityRetry();
+            clearQualityMonitor();
+        }, 350);
     }
 }
 
@@ -128,8 +166,11 @@ function onPlayerQualityChange(event) {
     const readableQuality = qualityMap[newQuality] || 'Auto';
     qualityStatus.textContent = `Video quality changed to: ${readableQuality}`;
     // Stop retrying once we reach the target in low-bandwidth mode
-    if (lowBandwidthMode && newQuality === 'small') {
-        clearQualityRetry();
+    if (lowBandwidthMode) {
+        const desired = getLowestAvailableQuality() || 'small';
+        if (newQuality === desired) {
+            clearQualityRetry();
+        }
     }
 }
 
@@ -142,19 +183,9 @@ function enforceLowQuality() {
     clearQualityRetry();
     const target = getLowestAvailableQuality() || 'small';
     qualityStatus.textContent = `Requesting lower quality (${qualityMap[target] || target})...`;
-    // Immediate attempt: set quality and also try a reload at current time with suggestedQuality
+    // Suggest once, then a few gentle retries without reloading
     try { player.setPlaybackQuality(target); } catch {}
-    try {
-        const t = safeGetCurrentTime();
-        if (typeof t === 'number') {
-            player.loadVideoById({ videoId: currentVideoId, startSeconds: t, suggestedQuality: target });
-        }
-    } catch {}
-    // Kick playback in case it's paused/buffering
-    try {
-        player.playVideo();
-    } catch {}
-    // Retry up to N times
+    try { player.playVideo(); } catch {}
     qualityRetryCount = 0;
     qualityRetryTimer = setInterval(() => {
         qualityRetryCount++;
@@ -164,24 +195,15 @@ function enforceLowQuality() {
             clearQualityRetry();
             return;
         }
-        // Suggest again
+        // Light suggestion, no reload
         try { player.setPlaybackQuality(desired); } catch {}
-        // Every few attempts, force reload at current position with suggestedQuality
-        if (qualityRetryCount === 2 || qualityRetryCount === 5) {
-            try {
-                const t = safeGetCurrentTime();
-                if (typeof t === 'number') {
-                    player.loadVideoById({ videoId: currentVideoId, startSeconds: t, suggestedQuality: desired });
-                }
-            } catch {}
-        }
-        if (qualityRetryCount >= 10) {
+        if (qualityRetryCount >= 5) {
             clearQualityRetry();
             const finalQ = safeGetPlaybackQuality();
             const msgQ = qualityMap[finalQ] || finalQ || 'Auto';
-            qualityStatus.textContent = `Tried to lower quality; final setting is ${msgQ} and may vary due to YouTube auto.`;
+            qualityStatus.textContent = `Targeted ${qualityMap[desired] || desired}; actual is ${msgQ} (YouTube may adapt).`;
         }
-    }, 600);
+    }, 1200);
 }
 
 /**
@@ -189,24 +211,30 @@ function enforceLowQuality() {
  * available quality. When OFF, returns playback to automatic quality.
  */
 function toggleLowInternetMode() {
-    if (!player) {
-        qualityStatus.textContent = 'Load and start a video first.';
-        return;
-    }
     if (!lowBandwidthMode) {
         lowBandwidthMode = true;
-        const target = getLowestAvailableQuality() || 'small';
         qualityButton.textContent = 'Disable Low Internet';
-        qualityStatus.textContent = `Low-internet mode ON. Targeting ${qualityMap[target] || target}.`;
-        enforceLowQuality();
+        if (player) {
+            const target = getLowestAvailableQuality() || 'small';
+            qualityStatus.textContent = `Low-internet mode ON. Targeting ${qualityMap[target] || target}.`;
+            enforceLowQuality();
+            startQualityMonitor();
+        } else {
+            qualityStatus.textContent = 'Low-internet mode ON. Will apply on playback.';
+        }
     } else {
         lowBandwidthMode = false;
         clearQualityRetry();
-        try { player.setPlaybackQuality('default'); } catch {}
+        clearQualityMonitor();
+        try { player && player.setPlaybackQuality('default'); } catch {}
         qualityButton.textContent = 'Simulate Low Internet';
-        const q = safeGetPlaybackQuality();
-        const readable = qualityMap[q] || q || 'Auto';
-        qualityStatus.textContent = `Low-internet mode OFF. Quality: ${readable}`;
+        if (player) {
+            const q = safeGetPlaybackQuality();
+            const readable = qualityMap[q] || q || 'Auto';
+            qualityStatus.textContent = `Low-internet mode OFF. Quality: ${readable}`;
+        } else {
+            qualityStatus.textContent = 'Low-internet mode OFF.';
+        }
     }
 }
 
@@ -214,6 +242,29 @@ function clearQualityRetry() {
     if (qualityRetryTimer) {
         clearInterval(qualityRetryTimer);
         qualityRetryTimer = null;
+    }
+}
+
+function startQualityMonitor() {
+    clearQualityMonitor();
+    qualityMonitorTimer = setInterval(() => {
+        if (!player) return;
+        const q = safeGetPlaybackQuality();
+        const readable = qualityMap[q] || q || 'Auto';
+        if (lowBandwidthMode) {
+            const target = getLowestAvailableQuality() || 'small';
+            // Display-only to avoid stutter
+            qualityStatus.textContent = `Applied: ${readable} (target: ${qualityMap[target] || target})`;
+        } else {
+            qualityStatus.textContent = `Quality: ${readable}`;
+        }
+    }, 700);
+}
+
+function clearQualityMonitor() {
+    if (qualityMonitorTimer) {
+        clearInterval(qualityMonitorTimer);
+        qualityMonitorTimer = null;
     }
 }
 
@@ -260,22 +311,30 @@ loadButton.addEventListener('click', () => {
     if (videoId) {
         currentVideoId = videoId;
         createFacade(videoId);
-        qualityButton.classList.add('hidden'); // Hide button until video plays
+        // Make the simulate button available before playback so user can enable low mode early
+        qualityButton.classList.remove('hidden');
         qualityStatus.textContent = ''; // Clear status on new video load
         // Reset toggle when new video is loaded (optional: keep state if desired)
         clearQualityRetry();
+        clearQualityMonitor();
         lowBandwidthMode = false;
         qualityButton.textContent = 'Simulate Low Internet';
+        clearQualityMonitor();
     } else {
         alert('Please enter a valid YouTube video link!');
     }
-});
+}
+);
 
 qualityButton.addEventListener('click', () => {
     // Toggle actual low-bandwidth behavior
     toggleLowInternetMode();
+    if (lowBandwidthMode) {
+        startQualityMonitor();
+    } else {
+        clearQualityMonitor();
+    }
 });
-
 /**
  * Show an animated overlay and staged, fake status messages to simulate low internet.
  */
@@ -323,7 +382,44 @@ function createSimulateOverlay() {
     playerContainer.appendChild(overlay);
 }
 
-function removeSimulateOverlay() {
-    const overlay = document.getElementById('simulateOverlay');
+function removePauseOverlay() {
+    const overlay = document.getElementById('pauseOverlay');
     if (overlay) overlay.remove();
+}
+
+function showPauseOverlay() {
+    if (document.getElementById('pauseOverlay')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'pauseOverlay';
+    overlay.className = 'pause-overlay';
+    overlay.innerHTML = `
+        <div class="pause-overlay-content">
+            <div class="pause-title">Video paused</div>
+            <button id="resumePlaybackBtn" class="resume-btn">Resume</button>
+        </div>
+    `;
+    playerContainer.appendChild(overlay);
+    const btn = overlay.querySelector('#resumePlaybackBtn');
+    if (btn) {
+        btn.addEventListener('click', () => {
+            try { player && player.playVideo && player.playVideo(); } catch {}
+            removePauseOverlay();
+        });
+    }
+}
+
+// --- YouTube PlayerVars ---
+function createPlayerVars(videoId) {
+    return {
+        videoId,
+        modestbranding: 1,
+        controls: 1,
+        showinfo: 0,
+        rel: 0,
+        autoplay: 1,
+        disablekb: 1,
+        enablejsapi: 1,
+        widgetid: 1,
+        origin: window.location.origin,
+    };
 }

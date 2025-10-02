@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Resource hints to speed up connections to YouTube and thumbnail hosts -->
+    <link rel="preconnect" href="https://www.youtube.com">
+    <link rel="preconnect" href="https://i.ytimg.com">
+    <link rel="preconnect" href="https://www.google.com">
+    <link rel="dns-prefetch" href="https://www.youtube.com">
+    <link rel="dns-prefetch" href="https://i.ytimg.com">
+    <link rel="dns-prefetch" href="https://www.google.com">
     <title>Interactive Video Loader</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -11,7 +18,6 @@
         <h1>Performance-Optimized YouTube Player</h1>
         <p>Paste a YouTube video link below and click "Load Video".</p>
         <p class="disclaimer">This prototype highlights our USP by demonstrating faster video loading with minimal buffering using a Facade technique and lazy loading. Actual performance may vary in a production environment.</p>
-        
         <div class="input-area">
             <input type="url" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=...">
             <button id="loadVideoButton">Load Video</button>

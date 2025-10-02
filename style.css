@@ -155,10 +155,32 @@ body {
     animation: spin 0.9s linear infinite;
 }
 
-.simulate-text {
-    font-size: 0.95rem;
+/* Pause overlay to mask YouTube recommendations */
+.pause-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3; /* above simulate overlay and player */
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
+.pause-overlay-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: #fff;
+    text-align: center;
+}
+
+.pause-title {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.resume-btn {
+    padding: 10px 16px;
+    border: none;
 }
